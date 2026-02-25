@@ -71,38 +71,12 @@ class Database:
                 )
             """)
             
-            # Таблица голосований
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS votes (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    chat_id INTEGER,
-                    target_user_id INTEGER,
-                    vote_type TEXT,
-                    created_by INTEGER,
-                    yes_votes INTEGER DEFAULT 0,
-                    no_votes INTEGER DEFAULT 0,
-                    end_date DATETIME,
-                    is_active BOOLEAN DEFAULT TRUE
-                )
-            """)
-            
-            # Таблица голосов пользователей
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS vote_votes (
-                    vote_id INTEGER,
-                    user_id INTEGER,
-                    vote BOOLEAN,  -- TRUE = за, FALSE = против
-                    PRIMARY KEY (vote_id, user_id)
-                )
-            """)
+            conn.commit()
     
     # ========== МЕТОДЫ ДЛЯ ПОЛЬЗОВАТЕЛЕЙ ==========
     
     def get_user(self, user_id, username=None):
-        """
-        Получить пользователя из БД или создать нового
-        Используется в: /start, /profile, везде где нужен пользователь
-        """
+        """Получить пользователя из БД или создать нового"""
         with self.get_connection() as conn:
             user = conn.execute(
                 "SELECT * FROM users WHERE user_id = ?", 
@@ -116,6 +90,7 @@ class Database:
                     INSERT INTO users (user_id, username, join_date, last_message_date)
                     VALUES (?, ?, ?, ?)
                 """, (user_id, username, now, now))
+                conn.commit()
                 
                 user = conn.execute(
                     "SELECT * FROM users WHERE user_id = ?", 
@@ -128,16 +103,16 @@ class Database:
                         "UPDATE users SET username = ? WHERE user_id = ?",
                         (username, user_id)
                     )
-                    user = list(user)
-                    user[1] = username
+                    conn.commit()
+                    user = conn.execute(
+                        "SELECT * FROM users WHERE user_id = ?", 
+                        (user_id,)
+                    ).fetchone()
             
             return user
     
     def get_user_by_username(self, username):
-        """
-        Найти пользователя по username
-        Используется в: /profile @user, /warn @user, /rank @user
-        """
+        """Найти пользователя по username"""
         with self.get_connection() as conn:
             return conn.execute(
                 "SELECT * FROM users WHERE username = ?",
@@ -145,10 +120,7 @@ class Database:
             ).fetchone()
     
     def get_user_rank(self, user_id):
-        """
-        Получить ранг пользователя
-        Используется в: проверка прав для команд
-        """
+        """Получить ранг пользователя"""
         with self.get_connection() as conn:
             result = conn.execute(
                 "SELECT rank FROM users WHERE user_id = ?",
@@ -157,10 +129,7 @@ class Database:
             return result[0] if result else 0
     
     def update_user_rank(self, user_id, new_rank, promoted_by=None, reason=None):
-        """
-        Обновить ранг пользователя
-        Используется в: /rank, /demote, авто-повышение
-        """
+        """Обновить ранг пользователя"""
         with self.get_connection() as conn:
             # Получаем старый ранг
             old_rank = conn.execute(
@@ -180,12 +149,11 @@ class Database:
                 INSERT INTO promotion_logs (user_id, old_rank, new_rank, promoted_by, reason)
                 VALUES (?, ?, ?, ?, ?)
             """, (user_id, old_rank, new_rank, promoted_by, reason))
+            
+            conn.commit()
     
     def update_messages_count(self, user_id):
-        """
-        Увеличить счетчик сообщений пользователя
-        Вызывается при каждом сообщении в чате
-        """
+        """Увеличить счетчик сообщений пользователя"""
         with self.get_connection() as conn:
             conn.execute("""
                 UPDATE users 
@@ -193,12 +161,10 @@ class Database:
                     last_message_date = ?
                 WHERE user_id = ?
             """, (datetime.datetime.now(), user_id))
+            conn.commit()
     
     def get_top_users(self, limit=10):
-        """
-        Топ пользователей по сообщениям
-        Используется в: /top
-        """
+        """Топ пользователей по сообщениям"""
         with self.get_connection() as conn:
             return conn.execute("""
                 SELECT user_id, username, rank, messages 
@@ -208,10 +174,7 @@ class Database:
             """, (limit,)).fetchall()
     
     def get_users_with_ranks(self):
-        """
-        Получить всех пользователей с рангами (не Новичков)
-        Используется в: /ranks
-        """
+        """Получить всех пользователей с рангами (не Новичков)"""
         with self.get_connection() as conn:
             return conn.execute("""
                 SELECT user_id, username, rank, messages 
@@ -221,20 +184,14 @@ class Database:
             """).fetchall()
     
     def get_all_users(self):
-        """
-        Получить всех пользователей
-        Используется в: авто-повышение
-        """
+        """Получить всех пользователей"""
         with self.get_connection() as conn:
             return conn.execute("SELECT * FROM users").fetchall()
     
     # ========== МЕТОДЫ ДЛЯ СОЦИАЛЬНЫХ ВЗАИМОДЕЙСТВИЙ ==========
     
     def add_social_interaction(self, from_id, to_id, action_type):
-        """
-        Добавить социальное взаимодействие (обнимашки, пиво и т.д.)
-        Используется в: /obn, /slap, /givebeer, /respect
-        """
+        """Добавить социальное взаимодействие"""
         with self.get_connection() as conn:
             # Обновляем счётчики дающего
             conn.execute(f"""
@@ -260,12 +217,11 @@ class Database:
                     {action_type}_count = {action_type}_count + 1,
                     last_interaction = ?
             """, (from_id, to_id, now, now))
+            
+            conn.commit()
     
     def get_beers_between(self, user1_id, user2_id):
-        """
-        Получить количество пивных угощений между пользователями
-        Используется в: проверка пивной дружбы
-        """
+        """Получить количество пивных угощений между пользователями"""
         with self.get_connection() as conn:
             result = conn.execute(
                 "SELECT beers_count FROM relations WHERE user1_id = ? AND user2_id = ?",
@@ -274,10 +230,7 @@ class Database:
             return result[0] if result else 0
     
     def get_user_relations(self, user_id):
-        """
-        Получить отношения пользователя с другими
-        Используется в: /achievements для пивной дружбы
-        """
+        """Получить отношения пользователя с другими"""
         with self.get_connection() as conn:
             return conn.execute("""
                 SELECT r.user1_id, u.username, r.beers_count
@@ -288,10 +241,7 @@ class Database:
             """, (user_id,)).fetchall()
     
     def get_top_by_stat(self, stat_name, limit=5):
-        """
-        Топ по определенной статистике
-        Используется в: /topbeers, /toprespects, /tophugs, /topslaps
-        """
+        """Топ по определенной статистике"""
         with self.get_connection() as conn:
             return conn.execute(f"""
                 SELECT user_id, username, {stat_name}
@@ -304,15 +254,13 @@ class Database:
     # ========== МЕТОДЫ ДЛЯ МОДЕРАЦИИ ==========
     
     def add_warn(self, user_id):
-        """
-        Добавить предупреждение
-        Используется в: /warn
-        """
+        """Добавить предупреждение"""
         with self.get_connection() as conn:
             conn.execute(
                 "UPDATE users SET warns = warns + 1 WHERE user_id = ?",
                 (user_id,)
             )
+            conn.commit()
             result = conn.execute(
                 "SELECT warns FROM users WHERE user_id = ?",
                 (user_id,)
@@ -320,10 +268,7 @@ class Database:
             return result[0] if result else 0
     
     def mute_user(self, user_id, duration_seconds):
-        """
-        Замутить пользователя
-        Используется в: /mute
-        """
+        """Замутить пользователя"""
         mute_until = datetime.datetime.now() + datetime.timedelta(seconds=duration_seconds)
         with self.get_connection() as conn:
             conn.execute("""
@@ -331,52 +276,32 @@ class Database:
                 SET is_muted = TRUE, mute_end_date = ? 
                 WHERE user_id = ?
             """, (mute_until, user_id))
+            conn.commit()
     
     def unmute_user(self, user_id):
-        """
-        Снять мут
-        Используется в: /unmute
-        """
+        """Снять мут"""
         with self.get_connection() as conn:
             conn.execute("""
                 UPDATE users 
                 SET is_muted = FALSE, mute_end_date = NULL 
                 WHERE user_id = ?
             """, (user_id,))
+            conn.commit()
     
     def ban_user(self, user_id):
-        """
-        Забанить пользователя
-        Используется в: /ban
-        """
+        """Забанить пользователя"""
         with self.get_connection() as conn:
             conn.execute(
                 "UPDATE users SET is_banned = TRUE WHERE user_id = ?",
                 (user_id,)
             )
+            conn.commit()
     
     def unban_user(self, user_id):
-        """
-        Разбанить пользователя
-        Используется в: /unban
-        """
+        """Разбанить пользователя"""
         with self.get_connection() as conn:
             conn.execute(
                 "UPDATE users SET is_banned = FALSE WHERE user_id = ?",
                 (user_id,)
             )
-    
-    # ========== МЕТОДЫ ДЛЯ ГОЛОСОВАНИЙ ==========
-    
-    def create_vote(self, chat_id, target_user_id, created_by, vote_type):
-        """
-        Создать голосование
-        Используется в: /votekick
-        """
-        end_date = datetime.datetime.now() + datetime.timedelta(minutes=5)
-        with self.get_connection() as conn:
-            cursor = conn.execute("""
-                INSERT INTO votes (chat_id, target_user_id, vote_type, created_by, end_date)
-                VALUES (?, ?, ?, ?, ?)
-            """, (chat_id, target_user_id, vote_type, created_by, end_date))
-            return cursor.lastrowid
+            conn.commit()
