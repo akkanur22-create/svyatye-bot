@@ -3,7 +3,7 @@ import logging
 import random
 from flask import Flask, request
 from aiogram import Bot, Dispatcher
-from aiogram.types import Message
+from aiogram.types import Message,  Update 
 from aiogram.filters import Command
 import asyncio
 import datetime
@@ -250,9 +250,21 @@ def health():
 @app.route('/webhook', methods=['POST'])
 def webhook():
     """Получение обновлений от Telegram"""
-    update = Update.model_validate(request.get_json(), context={"bot": bot})
-    asyncio.run_coroutine_threadsafe(dp.feed_update(bot, update), loop)
-    return "OK", 200
+    try:
+        # Получаем данные от Telegram
+        update_data = request.get_json()
+        print(f"🔥 Получен webhook: {update_data.get('update_id')}")
+        
+        # Создаем объект Update
+        update = Update.model_validate(update_data)
+        
+        # Запускаем обработку в отдельном потоке asyncio
+        asyncio.run_coroutine_threadsafe(dp.feed_update(bot, update), loop)
+        
+        return "OK", 200
+    except Exception as e:
+        print(f"❌ Ошибка в webhook: {e}")
+        return "Internal Server Error", 500
 
 # Регистрируем обработчики из других модулей
 setup_rank_handlers(dp, db)
@@ -261,14 +273,28 @@ setup_admin_handlers(dp, db)
 
 async def on_startup():
     """Действия при запуске"""
-    # Устанавливаем вебхук
-    render_url = os.environ.get('RENDER_EXTERNAL_URL', '')
-    if render_url:
-        webhook_url = f"{render_url}/webhook"
-        await bot.set_webhook(url=webhook_url)
-        logging.info(f"✅ Webhook установлен на {webhook_url}")
-    
-    logging.info("🚀 Бот запущен!")
+    try:
+        render_url = os.environ.get('RENDER_EXTERNAL_URL', '')
+        print(f"🔍 RENDER_EXTERNAL_URL = {render_url}")
+        
+        if render_url:
+            webhook_url = f"{render_url}/webhook"
+            print(f"🔧 Устанавливаю вебхук на: {webhook_url}")
+            
+            # Сначала удаляем старый вебхук
+            await bot.delete_webhook()
+            
+            # Устанавливаем новый
+            await bot.set_webhook(url=webhook_url)
+            
+            # Проверяем информацию о вебхуке
+            webhook_info = await bot.get_webhook_info()
+            print(f"✅ Вебхук установлен: {webhook_info.url}")
+            print(f"✅ Ожидающих обновлений: {webhook_info.pending_update_count}")
+        
+        logging.info("🚀 Бот запущен!")
+    except Exception as e:
+        print(f"❌ Ошибка при запуске: {e}")
 
 async def on_shutdown():
     """Действия при остановке"""
