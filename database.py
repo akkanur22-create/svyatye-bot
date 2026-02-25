@@ -4,15 +4,17 @@ import os
 
 class Database:
     def __init__(self):
+        """Инициализация базы данных"""
         db_path = os.path.join(os.path.dirname(__file__), "bot_database.db")
         self.db_path = db_path
         self.init_db()
     
     def get_connection(self):
+        """Создает соединение с БД"""
         return sqlite3.connect(self.db_path)
     
     def init_db(self):
-        """Создание таблиц"""
+        """Создание всех таблиц при первом запуске"""
         with self.get_connection() as conn:
             # Таблица пользователей
             conn.execute("""
@@ -94,8 +96,13 @@ class Database:
                 )
             """)
     
+    # ========== МЕТОДЫ ДЛЯ ПОЛЬЗОВАТЕЛЕЙ ==========
+    
     def get_user(self, user_id, username=None):
-        """Получить или создать пользователя"""
+        """
+        Получить пользователя из БД или создать нового
+        Используется в: /start, /profile, везде где нужен пользователь
+        """
         with self.get_connection() as conn:
             user = conn.execute(
                 "SELECT * FROM users WHERE user_id = ?", 
@@ -127,7 +134,10 @@ class Database:
             return user
     
     def get_user_by_username(self, username):
-        """Найти пользователя по username"""
+        """
+        Найти пользователя по username
+        Используется в: /profile @user, /warn @user, /rank @user
+        """
         with self.get_connection() as conn:
             return conn.execute(
                 "SELECT * FROM users WHERE username = ?",
@@ -135,7 +145,10 @@ class Database:
             ).fetchone()
     
     def get_user_rank(self, user_id):
-        """Получить ранг пользователя"""
+        """
+        Получить ранг пользователя
+        Используется в: проверка прав для команд
+        """
         with self.get_connection() as conn:
             result = conn.execute(
                 "SELECT rank FROM users WHERE user_id = ?",
@@ -144,7 +157,10 @@ class Database:
             return result[0] if result else 0
     
     def update_user_rank(self, user_id, new_rank, promoted_by=None, reason=None):
-        """Обновить ранг пользователя"""
+        """
+        Обновить ранг пользователя
+        Используется в: /rank, /demote, авто-повышение
+        """
         with self.get_connection() as conn:
             # Получаем старый ранг
             old_rank = conn.execute(
@@ -165,8 +181,60 @@ class Database:
                 VALUES (?, ?, ?, ?, ?)
             """, (user_id, old_rank, new_rank, promoted_by, reason))
     
+    def update_messages_count(self, user_id):
+        """
+        Увеличить счетчик сообщений пользователя
+        Вызывается при каждом сообщении в чате
+        """
+        with self.get_connection() as conn:
+            conn.execute("""
+                UPDATE users 
+                SET messages = messages + 1,
+                    last_message_date = ?
+                WHERE user_id = ?
+            """, (datetime.datetime.now(), user_id))
+    
+    def get_top_users(self, limit=10):
+        """
+        Топ пользователей по сообщениям
+        Используется в: /top
+        """
+        with self.get_connection() as conn:
+            return conn.execute("""
+                SELECT user_id, username, rank, messages 
+                FROM users 
+                ORDER BY messages DESC 
+                LIMIT ?
+            """, (limit,)).fetchall()
+    
+    def get_users_with_ranks(self):
+        """
+        Получить всех пользователей с рангами (не Новичков)
+        Используется в: /ranks
+        """
+        with self.get_connection() as conn:
+            return conn.execute("""
+                SELECT user_id, username, rank, messages 
+                FROM users 
+                WHERE rank > 0
+                ORDER BY rank DESC, messages DESC
+            """).fetchall()
+    
+    def get_all_users(self):
+        """
+        Получить всех пользователей
+        Используется в: авто-повышение
+        """
+        with self.get_connection() as conn:
+            return conn.execute("SELECT * FROM users").fetchall()
+    
+    # ========== МЕТОДЫ ДЛЯ СОЦИАЛЬНЫХ ВЗАИМОДЕЙСТВИЙ ==========
+    
     def add_social_interaction(self, from_id, to_id, action_type):
-        """Добавить социальное взаимодействие"""
+        """
+        Добавить социальное взаимодействие (обнимашки, пиво и т.д.)
+        Используется в: /obn, /slap, /givebeer, /respect
+        """
         with self.get_connection() as conn:
             # Обновляем счётчики дающего
             conn.execute(f"""
@@ -194,7 +262,10 @@ class Database:
             """, (from_id, to_id, now, now))
     
     def get_beers_between(self, user1_id, user2_id):
-        """Получить количество пивных угощений между пользователями"""
+        """
+        Получить количество пивных угощений между пользователями
+        Используется в: проверка пивной дружбы
+        """
         with self.get_connection() as conn:
             result = conn.execute(
                 "SELECT beers_count FROM relations WHERE user1_id = ? AND user2_id = ?",
@@ -202,8 +273,41 @@ class Database:
             ).fetchone()
             return result[0] if result else 0
     
+    def get_user_relations(self, user_id):
+        """
+        Получить отношения пользователя с другими
+        Используется в: /achievements для пивной дружбы
+        """
+        with self.get_connection() as conn:
+            return conn.execute("""
+                SELECT r.user1_id, u.username, r.beers_count
+                FROM relations r
+                JOIN users u ON r.user2_id = u.user_id
+                WHERE r.user1_id = ? AND r.beers_count >= 5
+                ORDER BY r.beers_count DESC
+            """, (user_id,)).fetchall()
+    
+    def get_top_by_stat(self, stat_name, limit=5):
+        """
+        Топ по определенной статистике
+        Используется в: /topbeers, /toprespects, /tophugs, /topslaps
+        """
+        with self.get_connection() as conn:
+            return conn.execute(f"""
+                SELECT user_id, username, {stat_name}
+                FROM users 
+                WHERE {stat_name} > 0
+                ORDER BY {stat_name} DESC 
+                LIMIT ?
+            """, (limit,)).fetchall()
+    
+    # ========== МЕТОДЫ ДЛЯ МОДЕРАЦИИ ==========
+    
     def add_warn(self, user_id):
-        """Добавить предупреждение"""
+        """
+        Добавить предупреждение
+        Используется в: /warn
+        """
         with self.get_connection() as conn:
             conn.execute(
                 "UPDATE users SET warns = warns + 1 WHERE user_id = ?",
@@ -215,38 +319,64 @@ class Database:
             ).fetchone()
             return result[0] if result else 0
     
-    def get_top_users(self, limit=10):
-        """Топ пользователей по сообщениям"""
-        with self.get_connection() as conn:
-            return conn.execute("""
-                SELECT user_id, username, rank, messages 
-                FROM users 
-                ORDER BY messages DESC 
-                LIMIT ?
-            """, (limit,)).fetchall()
-    
-    def get_top_by_stat(self, stat_name, limit=5):
-        """Топ по определенной статистике"""
-        with self.get_connection() as conn:
-            return conn.execute(f"""
-                SELECT user_id, username, {stat_name}
-                FROM users 
-                WHERE {stat_name} > 0
-                ORDER BY {stat_name} DESC 
-                LIMIT ?
-            """, (limit,)).fetchall()
-    
-    def get_all_users(self):
-        """Получить всех пользователей"""
-        with self.get_connection() as conn:
-            return conn.execute("SELECT * FROM users").fetchall()
-    
-    def update_messages_count(self, user_id):
-        """Обновить счётчик сообщений"""
+    def mute_user(self, user_id, duration_seconds):
+        """
+        Замутить пользователя
+        Используется в: /mute
+        """
+        mute_until = datetime.datetime.now() + datetime.timedelta(seconds=duration_seconds)
         with self.get_connection() as conn:
             conn.execute("""
                 UPDATE users 
-                SET messages = messages + 1,
-                    last_message_date = ?
+                SET is_muted = TRUE, mute_end_date = ? 
                 WHERE user_id = ?
-            """, (datetime.datetime.now(), user_id))
+            """, (mute_until, user_id))
+    
+    def unmute_user(self, user_id):
+        """
+        Снять мут
+        Используется в: /unmute
+        """
+        with self.get_connection() as conn:
+            conn.execute("""
+                UPDATE users 
+                SET is_muted = FALSE, mute_end_date = NULL 
+                WHERE user_id = ?
+            """, (user_id,))
+    
+    def ban_user(self, user_id):
+        """
+        Забанить пользователя
+        Используется в: /ban
+        """
+        with self.get_connection() as conn:
+            conn.execute(
+                "UPDATE users SET is_banned = TRUE WHERE user_id = ?",
+                (user_id,)
+            )
+    
+    def unban_user(self, user_id):
+        """
+        Разбанить пользователя
+        Используется в: /unban
+        """
+        with self.get_connection() as conn:
+            conn.execute(
+                "UPDATE users SET is_banned = FALSE WHERE user_id = ?",
+                (user_id,)
+            )
+    
+    # ========== МЕТОДЫ ДЛЯ ГОЛОСОВАНИЙ ==========
+    
+    def create_vote(self, chat_id, target_user_id, created_by, vote_type):
+        """
+        Создать голосование
+        Используется в: /votekick
+        """
+        end_date = datetime.datetime.now() + datetime.timedelta(minutes=5)
+        with self.get_connection() as conn:
+            cursor = conn.execute("""
+                INSERT INTO votes (chat_id, target_user_id, vote_type, created_by, end_date)
+                VALUES (?, ?, ?, ?, ?)
+            """, (chat_id, target_user_id, vote_type, created_by, end_date))
+            return cursor.lastrowid
