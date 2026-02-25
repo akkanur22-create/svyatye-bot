@@ -2,7 +2,6 @@ import datetime
 from aiogram.types import Message
 from aiogram.filters import Command
 
-# Словарь с названиями рангов
 RANK_NAMES = {
     0: "👤 Новичок",
     1: "🌟 Стажер.Святых",
@@ -12,22 +11,19 @@ RANK_NAMES = {
     5: "💎 Директор святых"
 }
 
-# Требования для автоматического повышения (дни, сообщения)
 RANK_REQUIREMENTS = {
     1: {"days": 5, "messages": 500},
     2: {"days": 30, "messages": 3000},
 }
 
-async def setup_rank_handlers(dp, db):
+def setup_rank_handlers(dp, db):
     """Регистрация обработчиков команд для рангов"""
+    print("📱 Настройка ранговых команд...")
     
     @dp.message(Command("profile"))
     async def cmd_profile(message: Message):
-        """Просмотр профиля"""
-        # Определяем, чей профиль смотрим
         args = message.text.split()
         if len(args) > 1 and args[1].startswith('@'):
-            # Профиль другого пользователя
             username = args[1][1:]
             user = db.get_user_by_username(username)
             if not user:
@@ -36,16 +32,13 @@ async def setup_rank_handlers(dp, db):
             target_name = username
             target_user = user
         else:
-            # Свой профиль
             target_name = message.from_user.username
             target_user = db.get_user(message.from_user.id, target_name)
         
-        # Получаем данные
         rank = target_user[2]
         rank_name = RANK_NAMES.get(rank, "Неизвестно")
         messages = target_user[5] if len(target_user) > 5 else 0
         
-        # Дата присоединения
         join_date_str = target_user[3] if len(target_user) > 3 else None
         days_in_chat = 0
         if join_date_str:
@@ -70,7 +63,6 @@ async def setup_rank_handlers(dp, db):
     
     @dp.message(Command("top"))
     async def cmd_top(message: Message):
-        """Топ пользователей по сообщениям"""
         top_users = db.get_top_users(limit=10)
         
         if not top_users:
@@ -90,7 +82,6 @@ async def setup_rank_handlers(dp, db):
     
     @dp.message(Command("nextrank"))
     async def cmd_nextrank(message: Message):
-        """Информация о следующем ранге"""
         user = db.get_user(message.from_user.id, message.from_user.username)
         
         rank = user[2]
@@ -108,7 +99,6 @@ async def setup_rank_handlers(dp, db):
         
         req = RANK_REQUIREMENTS[next_rank]
         
-        # Получаем дни в чате
         join_date_str = user[3] if len(user) > 3 else None
         days_in_chat = 0
         if join_date_str:
@@ -130,7 +120,6 @@ async def setup_rank_handlers(dp, db):
     
     @dp.message(Command("level"))
     async def cmd_level(message: Message):
-        """Уровень пользователя"""
         user = db.get_user(message.from_user.id, message.from_user.username)
         messages = user[5] if len(user) > 5 else 0
         level = int(messages / 100) + 1
@@ -145,9 +134,7 @@ async def setup_rank_handlers(dp, db):
     
     @dp.message(Command("achievements"))
     async def cmd_achievements(message: Message):
-        """Достижения пользователя"""
         user = db.get_user(message.from_user.id, message.from_user.username)
-        
         messages = user[5] if len(user) > 5 else 0
         
         achievements = []
@@ -169,7 +156,6 @@ async def setup_rank_handlers(dp, db):
     
     @dp.message(Command("ranks"))
     async def cmd_ranks(message: Message):
-        """Список всех пользователей с рангами"""
         users_with_ranks = db.get_users_with_ranks()
         
         if not users_with_ranks:
@@ -195,7 +181,6 @@ async def setup_rank_handlers(dp, db):
     
     @dp.message(Command("rank"))
     async def cmd_rank(message: Message):
-        """Выдать ранг пользователю"""
         user_rank = db.get_user_rank(message.from_user.id)
         
         if user_rank < 2:
@@ -218,7 +203,6 @@ async def setup_rank_handlers(dp, db):
             await message.answer("❌ Ранг должен быть от 1 до 5")
             return
         
-        # Проверка прав
         can_promote = False
         if user_rank == 5:
             can_promote = True
@@ -246,7 +230,6 @@ async def setup_rank_handlers(dp, db):
     
     @dp.message(Command("demote"))
     async def cmd_demote(message: Message):
-        """Понизить пользователя"""
         user_rank = db.get_user_rank(message.from_user.id)
         
         if user_rank < 3:
@@ -297,7 +280,6 @@ async def check_auto_promotions(bot, db):
         if rank >= 2:
             continue
         
-        # Вычисляем дни в чате
         days = 0
         if join_date_str:
             try:
@@ -306,7 +288,6 @@ async def check_auto_promotions(bot, db):
             except:
                 pass
         
-        # Проверка на Стажера
         if rank == 0 and 1 in RANK_REQUIREMENTS:
             req = RANK_REQUIREMENTS[1]
             if messages >= req["messages"] and days >= req["days"]:
@@ -314,7 +295,6 @@ async def check_auto_promotions(bot, db):
                 promoted += 1
                 print(f"✅ @{username} повышен до Стажера")
         
-        # Проверка на Святого
         elif rank == 1 and 2 in RANK_REQUIREMENTS:
             req = RANK_REQUIREMENTS[2]
             if messages >= req["messages"] and days >= req["days"]:

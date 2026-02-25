@@ -28,7 +28,6 @@ db = Database()
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     """Приветственное сообщение"""
-    # Регистрируем пользователя в базе
     db.get_user(message.from_user.id, message.from_user.username)
     
     await message.answer(
@@ -85,7 +84,8 @@ async def cmd_help(message: Message):
         
         "👑 **УПРАВЛЕНИЕ РАНГАМИ (для админов):**\n"
         "/rank @user [1-5] - выдать ранг\n"
-        "/demote @user - понизить ранг\n\n"
+        "/demote @user - понизить ранг\n"
+        "/admins - список руководства\n\n"
         
         "ℹ️ **ИНФО:**\n"
         "/rules - правила чата"
@@ -152,7 +152,6 @@ async def cmd_rps(message: Message):
     
     bot_choice = random.choice(["камень", "ножницы", "бумага"])
     
-    # Определяем победителя
     if user_choice == bot_choice:
         result = "🤝 Ничья!"
     elif (user_choice == "камень" and bot_choice == "ножницы") or \
@@ -208,17 +207,13 @@ def health():
 def webhook():
     """Получение обновлений от Telegram"""
     try:
-        # Получаем данные от Telegram
         update_data = request.get_json()
         logging.info(f"🔥 Получен webhook: {update_data.get('update_id') if update_data else 'None'}")
         
         if not update_data:
             return "No data", 400
         
-        # Создаем объект Update
         update = Update.model_validate(update_data)
-        
-        # Запускаем обработку в отдельном потоке asyncio
         asyncio.run_coroutine_threadsafe(dp.feed_update(bot, update), loop)
         
         return "OK", 200
@@ -231,10 +226,14 @@ def webhook():
 async def on_startup():
     """Действия при запуске"""
     try:
-        # Регистрируем обработчики из других модулей (теперь с await)
-        await setup_rank_handlers(dp, db)
+        print("🔄 Загрузка ранговых команд...")
+        setup_rank_handlers(dp, db)
+        
+        print("🔄 Загрузка социальных команд...")
         await setup_social_handlers(dp, db)
-        await setup_admin_handlers(dp, db)
+        
+        print("🔄 Загрузка админ-команд...")
+        setup_admin_handlers(dp, db)
         
         render_url = os.environ.get('RENDER_EXTERNAL_URL', '')
         logging.info(f"🔍 RENDER_EXTERNAL_URL = {render_url}")
@@ -243,20 +242,14 @@ async def on_startup():
             webhook_url = f"{render_url}/webhook"
             logging.info(f"🔧 Устанавливаю вебхук на: {webhook_url}")
             
-            # Сначала удаляем старый вебхук
             await bot.delete_webhook()
-            
-            # Устанавливаем новый
             await bot.set_webhook(url=webhook_url)
             
-            # Проверяем информацию о вебхуке
             webhook_info = await bot.get_webhook_info()
             logging.info(f"✅ Вебхук установлен: {webhook_info.url}")
             logging.info(f"✅ Ожидающих обновлений: {webhook_info.pending_update_count}")
         
-        # Проверяем повышения при старте
         await check_auto_promotions(bot, db)
-        
         logging.info("🚀 Бот запущен!")
     except Exception as e:
         logging.error(f"❌ Ошибка при запуске: {e}")
@@ -280,11 +273,9 @@ def run_bot():
         loop.run_until_complete(on_shutdown())
 
 if __name__ == '__main__':
-    # Запускаем бота в отдельном потоке
     import threading
     bot_thread = threading.Thread(target=run_bot, daemon=True)
     bot_thread.start()
     
-    # Запускаем Flask
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
