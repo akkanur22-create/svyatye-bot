@@ -8,7 +8,7 @@ from aiogram.filters import Command
 
 import config
 from database import Database
-from ranks import setup_rank_handlers
+from ranks import setup_rank_handlers, check_auto_promotions
 from social import setup_social_handlers
 from admin import setup_admin_handlers
 
@@ -33,7 +33,7 @@ db = Database()
 async def cmd_start(message: Message):
     await message.answer(
         f"👋 Привет, {message.from_user.first_name}!\n"
-        f"Я бот для чата 'Святые'. Вот мои команды:\n"
+        f"Я бот для чата \"Святые\". Вот мои команды:\n"
         f"/profile - мой профиль\n"
         f"/top - топ чата\n"
         f"/help - все команды"
@@ -65,11 +65,6 @@ async def cmd_help(message: Message):
         "/votekick @user - голосование за кик"
     )
 
-# Подключаем остальные модули
-setup_rank_handlers(dp, db)
-setup_social_handlers(dp, db)
-setup_admin_handlers(dp, db)
-
 async def on_startup():
     print("🚀 Бот запущен!")
     # Проверяем повышения при старте
@@ -85,6 +80,7 @@ def run_bot():
 if __name__ == '__main__':
     # Запускаем бота в отдельном потоке
     bot_thread = threading.Thread(target=run_bot)
+    bot_thread.daemon = True
     bot_thread.start()
     
     # Запускаем Flask сервер на порту из окружения Render
