@@ -64,7 +64,7 @@ async def setup_rank_handlers(dp, db):
         # Получаем данные
         rank = target_user[2]
         rank_name = RANK_NAMES.get(rank, "Неизвестно")
-        messages = target_user[5] if len(target_user) > 5 else 0  # Индекс может отличаться
+        messages = target_user[5] if len(target_user) > 5 else 0
         
         # Дата присоединения
         join_date_str = target_user[3] if len(target_user) > 3 else None
@@ -77,7 +77,7 @@ async def setup_rank_handlers(dp, db):
         else:
             days_in_chat = 0
         
-        # Социальная статистика (индексы могут отличаться в зависимости от структуры БД)
+        # Социальная статистика
         hugs_given = target_user[6] if len(target_user) > 6 else 0
         hugs_received = target_user[7] if len(target_user) > 7 else 0
         slaps_given = target_user[8] if len(target_user) > 8 else 0
@@ -256,7 +256,7 @@ async def setup_rank_handlers(dp, db):
         if relations:
             for rel in relations:
                 if rel[2] >= 10:  # beers_count
-                    achievements.append(f"• 🍻 **Пивная дружба** с @{rel[1]} - 10+ пива")
+                    achievements.append(f"• 🍻 **Пивная дружба** - {rel[2]} 🍺")
                     break
         
         if not achievements:
@@ -409,3 +409,74 @@ async def setup_rank_handlers(dp, db):
             f"✅ Пользователь @{target_username} понижен до ранга **{RANK_NAMES[target_new_rank]}**\n"
             f"Модератор: @{message.from_user.username}"
         )
+
+
+async def check_auto_promotions(bot, db):
+    """
+    Автоматическая проверка повышений
+    Вызывается при запуске бота и по расписанию
+    """
+    print("🔍 Проверка автоповышений...")
+    
+    # Получаем всех пользователей
+    users = db.get_all_users()
+    
+    promoted = 0
+    for user in users:
+        user_id = user[0]
+        username = user[1]
+        rank = user[2]
+        join_date_str = user[3]
+        messages = user[5] if len(user) > 5 else 0
+        
+        if rank >= 2:  # Выше Святого только ручная выдача
+            continue
+        
+        # Вычисляем дни в чате
+        if join_date_str:
+            try:
+                join_date = datetime.datetime.fromisoformat(join_date_str)
+                days = (datetime.datetime.now() - join_date).days
+            except:
+                days = 0
+        else:
+            days = 0
+        
+        # Проверка на Стажера (ранг 1)
+        if rank == 0 and 1 in RANK_REQUIREMENTS:
+            req = RANK_REQUIREMENTS[1]
+            if messages >= req["messages"] and days >= req["days"]:
+                db.update_user_rank(user_id, 1, None, "Автоматическое повышение")
+                promoted += 1
+                print(f"✅ @{username} повышен до Стажера")
+                
+                # Уведомляем пользователя
+                try:
+                    await bot.send_message(
+                        user_id,
+                        f"🎉 Поздравляем! Ты повышен до ранга **{RANK_NAMES[1]}**!\n"
+                        f"Теперь тебе доступны команды модерации."
+                    )
+                except:
+                    pass
+        
+        # Проверка на Святого (ранг 2)
+        elif rank == 1 and 2 in RANK_REQUIREMENTS:
+            req = RANK_REQUIREMENTS[2]
+            if messages >= req["messages"] and days >= req["days"]:
+                db.update_user_rank(user_id, 2, None, "Автоматическое повышение")
+                promoted += 1
+                print(f"✅ @{username} повышен до Святого")
+                
+                # Уведомляем пользователя
+                try:
+                    await bot.send_message(
+                        user_id,
+                        f"⚜️ Поздравляем! Ты достиг ранга **{RANK_NAMES[2]}**!\n"
+                        f"Теперь ты можешь выдавать ранги Стажерам."
+                    )
+                except:
+                    pass
+    
+    print(f"✅ Автоповышений: {promoted}")
+    return promoted

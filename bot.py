@@ -3,7 +3,7 @@ import logging
 import random
 from flask import Flask, request
 from aiogram import Bot, Dispatcher
-from aiogram.types import Message,  Update 
+from aiogram.types import Message, Update
 from aiogram.filters import Command
 import asyncio
 import datetime
@@ -46,7 +46,7 @@ async def cmd_help(message: Message):
     """Полный список команд"""
     await message.answer(
         "📋 **ПОЛНЫЙ СПИСОК КОМАНД БОТА**\n\n"
-        "👤 **ПроФИЛЬ И СТАТИСТИКА:**\n"
+        "👤 **ПРОФИЛЬ И СТАТИСТИКА:**\n"
         "/profile - твой профиль\n"
         "/profile @user - профиль друга\n"
         "/top - топ чата по активности\n"
@@ -55,7 +55,9 @@ async def cmd_help(message: Message):
         "/tophugs - топ по обнимашкам 🤗\n"
         "/topslaps - топ по шлепкам 👊\n"
         "/level - твой уровень\n"
-        "/achievements - твои достижения\n\n"
+        "/achievements - твои достижения\n"
+        "/nextrank - сколько до следующего ранга\n"
+        "/ranks - список всех с рангами\n\n"
         
         "🎮 **ИГРЫ И РАЗВЛЕЧЕНИЯ:**\n"
         "/random [N] - случайное число от 1 до N (по умолч. 100)\n"
@@ -83,19 +85,16 @@ async def cmd_help(message: Message):
         
         "👑 **УПРАВЛЕНИЕ РАНГАМИ (для админов):**\n"
         "/rank @user [1-5] - выдать ранг\n"
-        "/demote @user - понизить ранг\n"
-        "/ranks - список всех с рангами\n\n"
+        "/demote @user - понизить ранг\n\n"
         
         "ℹ️ **ИНФО:**\n"
-        "/rules - правила чата\n"
-        "/nextrank - сколько до следующего ранга"
+        "/rules - правила чата"
     )
 
 @dp.message(Command("random"))
 async def cmd_random(message: Message):
     """Случайное число"""
     try:
-        # Парсим аргумент (максимальное число)
         args = message.text.split()
         if len(args) > 1:
             max_num = int(args[1])
@@ -188,56 +187,6 @@ async def cmd_rules(message: Message):
         "Будь человеком! 🤗"
     )
 
-@dp.message(Command("level"))
-async def cmd_level(message: Message):
-    """Уровень пользователя"""
-    user = db.get_user(message.from_user.id, message.from_user.username)
-    messages = user[4]
-    
-    # Простая система уровней
-    level = int(messages / 100) + 1
-    next_level = (level * 100) - messages
-    
-    await message.answer(
-        f"📊 **Уровень @{message.from_user.username}**\n"
-        f"Текущий уровень: **{level}**\n"
-        f"Сообщений: {messages}\n"
-        f"До следующего уровня: {next_level} сообщений"
-    )
-
-@dp.message(Command("achievements"))
-async def cmd_achievements(message: Message):
-    """Достижения пользователя"""
-    user = db.get_user(message.from_user.id, message.from_user.username)
-    
-    # Получаем статистику
-    messages = user[4]
-    hugs_given = user[8] if len(user) > 8 else 0
-    beers_given = user[12] if len(user) > 12 else 0
-    respects_given = user[14] if len(user) > 14 else 0
-    
-    achievements = []
-    
-    # Проверяем достижения
-    if messages >= 100:
-        achievements.append("• 🗣 **Болтун** - 100 сообщений")
-    if messages >= 1000:
-        achievements.append("• 🏆 **Говорун** - 1000 сообщений")
-    if hugs_given >= 10:
-        achievements.append("• 🤗 **Душа компании** - 10 объятий")
-    if beers_given >= 10:
-        achievements.append("• 🍺 **Пивной брат** - 10 угощений")
-    if respects_given >= 10:
-        achievements.append("• 👑 **Уважаемый** - 10 респектов")
-    
-    if not achievements:
-        achievements = ["• Пока нет достижений. Активничай!"]
-    
-    await message.answer(
-        f"🏅 **Достижения @{message.from_user.username}**\n\n" +
-        "\n".join(achievements)
-    )
-
 # Flask маршруты
 @app.route('/')
 def home():
@@ -253,7 +202,10 @@ def webhook():
     try:
         # Получаем данные от Telegram
         update_data = request.get_json()
-        print(f"🔥 Получен webhook: {update_data.get('update_id')}")
+        logging.info(f"🔥 Получен webhook: {update_data.get('update_id') if update_data else 'None'}")
+        
+        if not update_data:
+            return "No data", 400
         
         # Создаем объект Update
         update = Update.model_validate(update_data)
@@ -263,7 +215,7 @@ def webhook():
         
         return "OK", 200
     except Exception as e:
-        print(f"❌ Ошибка в webhook: {e}")
+        logging.error(f"❌ Ошибка в webhook: {e}")
         return "Internal Server Error", 500
 
 # Регистрируем обработчики из других модулей
@@ -275,11 +227,11 @@ async def on_startup():
     """Действия при запуске"""
     try:
         render_url = os.environ.get('RENDER_EXTERNAL_URL', '')
-        print(f"🔍 RENDER_EXTERNAL_URL = {render_url}")
+        logging.info(f"🔍 RENDER_EXTERNAL_URL = {render_url}")
         
         if render_url:
             webhook_url = f"{render_url}/webhook"
-            print(f"🔧 Устанавливаю вебхук на: {webhook_url}")
+            logging.info(f"🔧 Устанавливаю вебхук на: {webhook_url}")
             
             # Сначала удаляем старый вебхук
             await bot.delete_webhook()
@@ -289,12 +241,15 @@ async def on_startup():
             
             # Проверяем информацию о вебхуке
             webhook_info = await bot.get_webhook_info()
-            print(f"✅ Вебхук установлен: {webhook_info.url}")
-            print(f"✅ Ожидающих обновлений: {webhook_info.pending_update_count}")
+            logging.info(f"✅ Вебхук установлен: {webhook_info.url}")
+            logging.info(f"✅ Ожидающих обновлений: {webhook_info.pending_update_count}")
+        
+        # Проверяем повышения при старте
+        await check_auto_promotions(bot, db)
         
         logging.info("🚀 Бот запущен!")
     except Exception as e:
-        print(f"❌ Ошибка при запуске: {e}")
+        logging.error(f"❌ Ошибка при запуске: {e}")
 
 async def on_shutdown():
     """Действия при остановке"""
