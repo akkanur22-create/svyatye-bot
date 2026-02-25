@@ -85,7 +85,6 @@ def run_bot():
 if __name__ == '__main__':
     # Запускаем бота в отдельном потоке
     bot_thread = threading.Thread(target=run_bot)
-    bot_thread.daemon = True  # Поток завершится при остановке главного
     bot_thread.start()
     
     # Запускаем Flask сервер на порту из окружения Render
