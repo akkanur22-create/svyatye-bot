@@ -187,7 +187,15 @@ async def cmd_rules(message: Message):
         "Будь человеком! 🤗"
     )
 
-# Flask маршруты
+# Счетчик сообщений для всех пользователей
+@dp.message()
+async def count_messages(message: Message):
+    """Увеличиваем счетчик сообщений для всех"""
+    if message.from_user and not message.text.startswith('/'):
+        db.update_messages_count(message.from_user.id)
+
+# ========== FLASK МАРШРУТЫ ==========
+
 @app.route('/')
 def home():
     return "Святой бот работает! 🤖"
@@ -218,14 +226,16 @@ def webhook():
         logging.error(f"❌ Ошибка в webhook: {e}")
         return "Internal Server Error", 500
 
-# Регистрируем обработчики из других модулей
-setup_rank_handlers(dp, db)
-setup_social_handlers(dp, db)
-setup_admin_handlers(dp, db)
+# ========== ЗАПУСК БОТА ==========
 
 async def on_startup():
     """Действия при запуске"""
     try:
+        # Регистрируем обработчики из других модулей (теперь с await)
+        await setup_rank_handlers(dp, db)
+        await setup_social_handlers(dp, db)
+        await setup_admin_handlers(dp, db)
+        
         render_url = os.environ.get('RENDER_EXTERNAL_URL', '')
         logging.info(f"🔍 RENDER_EXTERNAL_URL = {render_url}")
         
