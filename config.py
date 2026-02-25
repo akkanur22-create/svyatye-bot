@@ -1,9 +1,10 @@
 import os
-from dotenv import load_dotenv
 
-load_dotenv()
+# Токен бота (берется из переменных окружения)
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")  # Будет взято из переменных окружения Render
+if not BOT_TOKEN:
+    raise ValueError("❌ BOT_TOKEN не найден! Добавь его в переменные окружения Render.")
 
 # Названия рангов
 RANK_NAMES = {
@@ -17,9 +18,6 @@ RANK_NAMES = {
 
 # Требования для автоматического повышения
 RANK_REQUIREMENTS = {
-    1: {"days": 5, "messages": 500, "auto": True},
-    2: {"days": 30, "messages": 3000, "auto": True},
-    3: {"auto": False},  # Только ручная выдача
-    4: {"auto": False},
-    5: {"auto": False}
+    1: {"days": 5, "messages": 500},
+    2: {"days": 30, "messages": 3000},
 }
